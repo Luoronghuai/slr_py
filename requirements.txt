@@ -4,4 +4,3 @@ opencv-python-headless==4.5.3.56
 mediapipe==0.8.9.1
 numpy==1.21.2
 requests==2.26.0
-waitress==2.0.0
