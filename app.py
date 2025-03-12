@@ -56,7 +56,6 @@ def extract_frames(video_path):
     cap = cv2.VideoCapture(video_path)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     
-    # 计算采样间隔
     sample_interval = max(1, total_frames // VIDEO_CONFIG['max_frames'])
     
     frame_count = 0
@@ -66,7 +65,6 @@ def extract_frames(video_path):
             break
             
         if frame_count % sample_interval == 0:
-            # 调整帧大小以加快处理速度
             frame = cv2.resize(frame, (640, 480))
             frames.append(frame)
         frame_count += 1
@@ -75,31 +73,29 @@ def extract_frames(video_path):
     return frames
 
 def process_frames(frames):
-    """处理视频帧并进行手语识别"""
+    """处理视频帧"""
     try:
         with mp_holistic.Holistic(
             min_detection_confidence=VIDEO_CONFIG['min_detection_confidence'],
-            min_tracking_confidence=VIDEO_CONFIG['min_tracking_confidence'],
-            model_complexity=0  # 使用较轻量级的模型
+            min_tracking_confidence=VIDEO_CONFIG['min_tracking_confidence']
         ) as holistic:
-            landmarks_sequence = []
+            results_sequence = []
             
             for frame in frames:
                 image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                image.flags.writeable = False
                 results = holistic.process(image)
                 
                 if results.pose_landmarks:
                     pose = [(lm.x, lm.y, lm.z) for lm in results.pose_landmarks.landmark]
-                    landmarks_sequence.append(pose)
-                    
-            return analyze_landmarks(landmarks_sequence)
+                    results_sequence.append(pose)
+            
+            return analyze_landmarks(results_sequence)
     except Exception as e:
         print(f"处理帧失败: {str(e)}")
         return None
 
 def analyze_landmarks(landmarks_sequence):
-    """分析关键点序列并返回识别结果"""
+    """分析关键点序列"""
     if not landmarks_sequence:
         return "未检测到有效的手语动作"
     
@@ -107,7 +103,7 @@ def analyze_landmarks(landmarks_sequence):
     return "手语识别结果：你好"
 
 def process_video_task(video_path):
-    """异步处理视频任务"""
+    """处理视频任务"""
     try:
         frames = extract_frames(video_path)
         if not frames:
@@ -117,8 +113,18 @@ def process_video_task(video_path):
         print(f"视频处理任务失败: {str(e)}")
         return None
     finally:
-        if os.path.exists(video_path):
-            os.remove(video_path)
+        try:
+            if os.path.exists(video_path):
+                os.remove(video_path)
+        except:
+            pass
+
+@app.route('/')
+def home():
+    return jsonify({
+        "status": "running",
+        "message": "手语识别服务正在运行"
+    })
 
 @app.route('/api/recognize', methods=['POST'])
 def recognize():
@@ -153,10 +159,8 @@ def recognize():
             })
 
         try:
-            # 使用线程池处理视频
-            future = executor.submit(process_video_task, video_path)
-            result = future.result(timeout=25)
-
+            # 处理视频
+            result = process_video_task(video_path)
             if not result:
                 raise Exception("视频处理失败")
 
@@ -186,14 +190,13 @@ def recognize():
             "error": str(e)
         })
 
-# 用于Vercel等平台的处理函数
+# Vercel 处理函数
 def handler(request):
+    """处理 Vercel 的请求"""
     with app.request_context(request):
         return app.full_dispatch_request()
 
 # 本地开发服务器
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
-	
-	
+    app.run(host='0.0.0.0', port=port) 
